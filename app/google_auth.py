@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -15,7 +16,25 @@ from app.token_store import load_google_tokens, save_google_tokens
 CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-STATE_CACHE: set[str] = set()
+STATE_CACHE_PATH = Path(".data/oauth-state-cache.json")
+
+
+def _load_state_cache() -> set[str]:
+    """Load state tokens from persistent storage."""
+    if not STATE_CACHE_PATH.exists():
+        return set()
+    try:
+        data = json.loads(STATE_CACHE_PATH.read_text(encoding="utf-8"))
+        return set(data.get("states", []))
+    except (json.JSONDecodeError, IOError):
+        return set()
+
+
+def _save_state_cache(states: set[str]) -> None:
+    """Save state tokens to persistent storage."""
+    STATE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    data = {"states": list(states)}
+    STATE_CACHE_PATH.write_text(json.dumps(data), encoding="utf-8")
 
 
 def _load_google_client_from_file() -> tuple[str, str] | None:
@@ -47,7 +66,12 @@ def _google_client_config() -> tuple[str, str]:
 def generate_google_auth_url() -> tuple[str, str]:
     client_id, _client_secret = _google_client_config()
     state = secrets.token_urlsafe(24)
-    STATE_CACHE.add(state)
+    
+    # Load existing states and add new one
+    states = _load_state_cache()
+    states.add(state)
+    _save_state_cache(states)
+    
     params = {
         "client_id": client_id,
         "redirect_uri": settings.google_redirect_uri,
@@ -63,10 +87,14 @@ def generate_google_auth_url() -> tuple[str, str]:
 
 def exchange_code_for_tokens(code: str, state: str | None = None) -> None:
     client_id, client_secret = _google_client_config()
-    if state and state not in STATE_CACHE:
+    
+    # Load and validate state
+    states = _load_state_cache()
+    if state and state not in states:
         raise RuntimeError("Invalid OAuth state.")
     if state:
-        STATE_CACHE.discard(state)
+        states.discard(state)
+        _save_state_cache(states)
 
     payload = urlencode(
         {
