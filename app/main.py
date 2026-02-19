@@ -9,9 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import websockets
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.sessions import SessionMiddleware
 from websockets.exceptions import ConnectionClosed
 
 from app.calendar_service import create_calendar_event
@@ -22,6 +23,7 @@ PUBLIC_DIR = Path("public")
 DEEPGRAM_WS_URL = "wss://agent.deepgram.com/v1/agent/converse"
 
 app = FastAPI(title="Voice Scheduling Agent")
+app.add_middleware(SessionMiddleware, secret_key=settings.session_secret_key)
 app.mount("/static", StaticFiles(directory=PUBLIC_DIR), name="static")
 logger = logging.getLogger("voice_agent")
 
@@ -145,20 +147,20 @@ def google_status() -> dict[str, bool]:
 
 
 @app.get("/auth/google/start")
-def auth_google_start() -> RedirectResponse:
+def auth_google_start(request: Request) -> RedirectResponse:
     try:
-        auth_url, _state = generate_google_auth_url()
+        auth_url, _state = generate_google_auth_url(request.session)
         return RedirectResponse(auth_url)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/auth/google/callback")
-def auth_google_callback(code: str = Query(default=""), state: str = Query(default="")) -> RedirectResponse:
+def auth_google_callback(request: Request, code: str = Query(default=""), state: str = Query(default="")) -> RedirectResponse:
     if not code:
         raise HTTPException(status_code=400, detail="Missing OAuth code.")
     try:
-        exchange_code_for_tokens(code=code, state=state or None)
+        exchange_code_for_tokens(code=code, state=state or None, session=request.session)
         return RedirectResponse("/?google_connected=1")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Google OAuth failed: {exc}") from exc

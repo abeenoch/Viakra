@@ -19,6 +19,7 @@ class Settings:
     google_client_secret: str
     google_credentials_file: str
     google_redirect_path: str
+    session_secret_key: str
 
     @property
     def google_redirect_uri(self) -> str:
@@ -38,6 +39,7 @@ def get_settings() -> Settings:
         google_client_secret=_env("GOOGLE_CLIENT_SECRET"),
         google_credentials_file=_env("GOOGLE_CREDENTIALS_FILE", "credentials.json"),
         google_redirect_path=_env("GOOGLE_REDIRECT_PATH", "/auth/google/callback"),
+        session_secret_key=_env("SESSION_SECRET_KEY", "your-secret-key-change-in-production"),
     )
 
 

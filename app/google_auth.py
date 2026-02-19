@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import secrets
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -16,25 +15,6 @@ from app.token_store import load_google_tokens, save_google_tokens
 CALENDAR_SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-STATE_CACHE_PATH = Path(".data/oauth-state-cache.json")
-
-
-def _load_state_cache() -> set[str]:
-    """Load state tokens from persistent storage."""
-    if not STATE_CACHE_PATH.exists():
-        return set()
-    try:
-        data = json.loads(STATE_CACHE_PATH.read_text(encoding="utf-8"))
-        return set(data.get("states", []))
-    except (json.JSONDecodeError, IOError):
-        return set()
-
-
-def _save_state_cache(states: set[str]) -> None:
-    """Save state tokens to persistent storage."""
-    STATE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    data = {"states": list(states)}
-    STATE_CACHE_PATH.write_text(json.dumps(data), encoding="utf-8")
 
 
 def _load_google_client_from_file() -> tuple[str, str] | None:
@@ -63,14 +43,14 @@ def _google_client_config() -> tuple[str, str]:
     )
 
 
-def generate_google_auth_url() -> tuple[str, str]:
+def generate_google_auth_url(session: dict[str, Any]) -> tuple[str, str]:
     client_id, _client_secret = _google_client_config()
     state = secrets.token_urlsafe(24)
     
-    # Load existing states and add new one
-    states = _load_state_cache()
-    states.add(state)
-    _save_state_cache(states)
+    # Store state in session
+    if "oauth_states" not in session:
+        session["oauth_states"] = []
+    session["oauth_states"].append(state)
     
     params = {
         "client_id": client_id,
@@ -85,16 +65,20 @@ def generate_google_auth_url() -> tuple[str, str]:
     return f"{GOOGLE_AUTH_URL}?{urlencode(params)}", state
 
 
-def exchange_code_for_tokens(code: str, state: str | None = None) -> None:
+def exchange_code_for_tokens(code: str, state: str | None = None, session: dict[str, Any] | None = None) -> None:
     client_id, client_secret = _google_client_config()
     
-    # Load and validate state
-    states = _load_state_cache()
-    if state and state not in states:
-        raise RuntimeError("Invalid OAuth state.")
-    if state:
-        states.discard(state)
-        _save_state_cache(states)
+    # Validate state from session
+    if session:
+        oauth_states = session.get("oauth_states", [])
+        if state and state not in oauth_states:
+            raise RuntimeError("Invalid OAuth state.")
+        if state and state in oauth_states:
+            oauth_states.remove(state)
+            session["oauth_states"] = oauth_states
+    elif state:
+        # If no session provided, skip validation (fallback)
+        pass
 
     payload = urlencode(
         {
