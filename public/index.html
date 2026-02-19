@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Scheduling Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Voice Scheduling Agent</h1>
+      <p class="subtitle">Deepgram Voice Agent + Google Calendar</p>
+
+      <section class="panel">
+        <div class="status-row">
+          <span id="googleStatus">Google Calendar: checking...</span>
+          <a class="button secondary" href="/auth/google/start" id="connectGoogle">Connect Google</a>
+        </div>
+        <div class="controls">
+          <button id="startCall">Start Voice Session</button>
+          <button id="stopCall" disabled>Stop Session</button>
+        </div>
+        <p id="eventLinkRow" class="event-link-row" hidden>
+          Event created:
+          <a id="eventLink" target="_blank" rel="noopener noreferrer"></a>
+        </p>
+      </section>
+
+      <section class="panel">
+        <h2>Session Log</h2>
+        <pre id="log" class="log"></pre>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
