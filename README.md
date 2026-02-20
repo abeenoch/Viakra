@@ -1,8 +1,8 @@
 # Voice Scheduling Agent (Deepgram + Google Calendar)
 
-Production-style real-time voice scheduler:
+Real-time voice scheduler:
 - Starts a live conversation.
-- Collects name, preferred date/time, optional meeting title.
+- Collects name, preferred date/time and zone, optional meeting title.
 - Confirms final details.
 - Creates a real Google Calendar event.
 
@@ -26,23 +26,18 @@ Copy `.env.example` to `.env` and set:
 ```env
 PORT=3000
 BASE_URL=http://localhost:3000
+SESSION_SECRET_KEY=change-me-to-a-random-long-string
 DEEPGRAM_API_KEY=...
-GOOGLE_CLIENT_ID=...  # optional if using credentials.json
-GOOGLE_CLIENT_SECRET=...  # optional if using credentials.json
-GOOGLE_REDIRECT_PATH=
 ```
 
-Google OAuth client config priority:
-1. `credentials.json` file (path from `GOOGLE_CREDENTIALS_FILE`)
-2. `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` from `.env`
 
-If you use `credentials.json`, place it at the project root.
 
-Google OAuth redirect URIs:
-- `http://localhost:3000/auth/google/callback`
-- `https://<your-deployed-domain>/auth/google/callback`
+## Deployed URL
+- `https://voice-scheduling-agent-33p6.onrender.com/`
 
 ## Run locally
+Before running locally, follow the Google setup steps in **Calendar integration explanation**, then download `credentials.json` and place it in the project root directory.
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
@@ -63,49 +58,50 @@ Run:
 docker run --rm -p 3000:3000 --env-file .env -v "${PWD}/credentials.json:/app/credentials.json" vikara-voice-assistant
 ```
 
-Alternative (explicit absolute path):
+Alternative ( absolute path):
 ```bash
-docker run --rm -p 3000:3000 --env-file .env -v "C:/Users/Administrator/Desktop/ML/vikara/credentials.json:/app/credentials.json" vikara-voice-assistant
+docker run --rm -p 3000:3000 --env-file .env -v "C:/Users/Administrator/Desktop/-/-/credentials.json:/app/credentials.json" vikara-voice-assistant
 ```
 
-## Test flow
-1. Click `Connect Google` and finish consent.
+## How To Test
+1. After the clicking url(localhost or render url) and the page is loaded, click `Connect Google` and finish consent.
 2. Click `Start Voice Session`.
-3. Agent guides you to provide:
-   - your name
-   - preferred date/time
-   - timezone
-   - optional meeting title
-4. Confirm with explicit `yes`.
-5. Check Google Calendar for the newly created event.
+3. Agent guides you to provide your name, preferred date/time, timezone, and optional meeting title.
+4. Final confirmation with explicit `yes`.
+5. Check Google Calendar for the newly created event, you can also click on the url provided once the event is created.
 
-## Deployment
-Deploy as a standard Python web service (Render, Railway, Fly.io, etc.) with:
-- start command:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
-- environment variables from `.env.example`
+## Calendar integration explanation
+I integrated Google Calendar with OAuth 2.0 and Calendar API `events.insert`.
 
-Render-specific env checklist:
-- `BASE_URL=https://voice-scheduling-agent-33p6.onrender.com` (or your own Render URL)
-- `GOOGLE_REDIRECT_PATH=/auth/google/callback` (path only, not a full URL)
-- `SESSION_SECRET_KEY=<long-random-string>`
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (or mount `credentials.json`)
+Google Cloud steps I completed:
+- I enabled Google Calendar API here: `https://console.cloud.google.com/flows/enableapi?apiid=calendar-json.googleapis.com`
+- I configured the OAuth consent screen in Google Auth Platform Branding: `https://console.cloud.google.com/auth/branding`
+- In consent setup, I filled neccesary info/details, accepted the user data policy, and created the config.
+- For audience, I configured the app as External.
+- I created an OAuth client in Clients: `https://console.cloud.google.com/auth/clients`
+- I selected application type as Web application and created the client.
+- I added two authorized redirect URIs soI can test locally and via Render:
+  - `http://localhost:3000/auth/google/callback`
+  - `https://voice-scheduling-agent-33p6.onrender.com/auth/google/callback`
+- I saved the OAuth client JSON as `credentials.json` for the app.
 
-Final redirect URI used by the app is:
-- `https://voice-scheduling-agent-33p6.onrender.com/auth/google/callback`
+How this is wired in code:
+- `GET /auth/google/start` in `app/main.py` starts OAuth and sends the user to Google consent.
+- `GET /auth/google/callback` in `app/main.py` receives the auth code and completes token exchange.
+- OAuth/token logic is implemented in `app/google_auth.py`.
+- Tokens are stored by `app/token_store.py` in `.data/google-oauth-token.json`.
+- Calendar event creation is implemented in `app/calendar_service.py` using Google Calendar `events.insert`.
+
+Auth handling:
+- OAuth `state` validation is enabled.
+- The app validates state from session with a short-lived HTTP-only cookie fallback to handle deployment redirect/session edge cases.
+- Session middleware is configured with `same_site="lax"` and HTTPS-aware cookie behavior.
 
 
-## Submission checklist
-- GitHub repo: this project
-- Deployed URL: `<ADD_DEPLOYED_URL>`
-- Loom video: `<ADD_LOOM_LINK>`
-- Evidence artifacts: add screenshots/logs under `evidence/`
+## Evidence
 
-## Key implementation files
-- `app/main.py`
-- `app/google_auth.py`
-- `app/calendar_service.py`
-- `public/app.js`
-- `public/audio-worklet-processor.js`
+See `evidence/` folder for:
+- Voice session log showing the complete booking flow
+- Google Calendar event successfully created
+- Event details with correct time and duration
+- Render deployment logs
